@@ -84,4 +84,19 @@
     <string name="drv_a8xx_desc">La compilación para la familia 8xx, que es la del Snapdragon 8 Elite.</string>
     <string name="drv_general_desc">La compilación para las demás Adreno.</string>
     <string name="drv_qualcomm_desc">Un controlador de la propia Qualcomm, más nuevo que el del dispositivo.</string>
+
+
+    <!-- Physical gamepad assignment -->
+    <string name="sec_controllers">Mandos físicos</string>
+    <string name="controllers_title">Mandos detectados</string>
+    <string name="controllers_help">Conecta un mando físico o inicia primero la app que convierte el teléfono en mando; luego pulsa Actualizar. Elige a qué jugador asignar cada dispositivo. Esta página solo puede consultar los mandos mientras el juego está en ejecución.</string>
+    <string name="controllers_refresh">Actualizar lista</string>
+    <string name="controllers_none">No se encontraron mandos SDL. Conecta uno y actualiza. Si la app del teléfono solo envía teclas, SDL podría no mostrarla como mando.</string>
+    <string name="controller_player_button">Jugador %1$d</string>
+    <string name="controller_current_unassigned">Asignación actual: sin asignar</string>
+    <string name="controller_current_player">Asignación actual: jugador %1$d</string>
+    <string name="controller_unassign">Sin asignar</string>
+    <string name="controller_assign_success">Mando asignado al jugador %1$d.</string>
+    <string name="controller_unassign_success">Mando dejado sin asignar.</string>
+    <string name="controller_assign_failed">No se pudo asignar el mando. Actualiza la lista e inténtalo otra vez.</string>
 </resources>

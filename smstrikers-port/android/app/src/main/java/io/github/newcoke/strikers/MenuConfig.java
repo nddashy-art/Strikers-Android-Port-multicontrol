@@ -48,12 +48,20 @@ final class MenuConfig {
     // memória depois de o idioma mudar. Os rótulos do trilho ficariam no idioma
     // antigo com o resto da tela no novo.
     private static String[] secoes(Context ctx) {
-        return new String[] {
+        String[] comuns = new String[] {
             ctx.getString(R.string.sec_controls),
             ctx.getString(R.string.sec_video),
             ctx.getString(R.string.sec_game),
             ctx.getString(R.string.sec_about),
         };
+        // Only the in-game Activity has initialized SDL and loaded the native controller bridge.
+        if (ctx instanceof StrikersActivity) {
+            return new String[] {
+                comuns[0], comuns[1], comuns[2], comuns[3],
+                ctx.getString(R.string.sec_controllers),
+            };
+        }
+        return comuns;
     }
 
     static void abrir(final Context ctx, final Preferencias prefs, final AoFechar aoFechar) {
@@ -267,6 +275,7 @@ final class MenuConfig {
             case 0: controles(ctx, prefs, v); break;
             case 1: video(ctx, prefs, v); break;
             case 2: jogo(ctx, prefs, v); break;
+            case 4: controladoresFisicos(ctx, v); break;
             default: sobre(ctx, prefs, v); break;
         }
         return v;
@@ -294,6 +303,167 @@ final class MenuConfig {
         margem(ctx, v, q);
 
         nota(ctx, v, ctx.getString(R.string.controls_note));
+    }
+
+    /**
+     * Shows the gamepads SDL currently recognizes and lets the player assign each
+     * one to player ports 1-4. This is intentionally separate from touch-overlay controls.
+     */
+    private static void controladoresFisicos(Context ctx, LinearLayout v) {
+        TextView titulo = new TextView(ctx);
+        titulo.setText(R.string.controllers_title);
+        titulo.setTextColor(Vitrine.TEXTO);
+        titulo.setTextSize(18f);
+        titulo.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        titulo.setPadding(Vitrine.dp(ctx, 4), Vitrine.dp(ctx, 4),
+                          Vitrine.dp(ctx, 4), Vitrine.dp(ctx, 8));
+        v.addView(titulo);
+
+        nota(ctx, v, ctx.getString(R.string.controllers_help));
+
+        LinearLayout lista = new LinearLayout(ctx);
+        lista.setOrientation(LinearLayout.VERTICAL);
+        largo(ctx, v, lista);
+
+        TextView actualizar = Vitrine.botao(ctx, ctx.getString(R.string.controllers_refresh),
+                                            Vitrine.AZUL, true);
+        actualizar.setOnClickListener(view -> llenarListaControladores(ctx, lista));
+        LinearLayout.LayoutParams lpActualizar = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lpActualizar.topMargin = Vitrine.dp(ctx, 12);
+        v.addView(actualizar, lpActualizar);
+
+        llenarListaControladores(ctx, lista);
+    }
+
+    private static void llenarListaControladores(Context ctx, LinearLayout lista) {
+        lista.removeAllViews();
+        final String[] filas;
+        try {
+            filas = StrikersActivity.nativeGetControllers();
+        } catch (UnsatisfiedLinkError | RuntimeException error) {
+            android.util.Log.w("strikers", "No se pudieron consultar los mandos SDL", error);
+            nota(ctx, lista, ctx.getString(R.string.controllers_none));
+            return;
+        }
+
+        if (filas == null || filas.length == 0) {
+            nota(ctx, lista, ctx.getString(R.string.controllers_none));
+            return;
+        }
+
+        int mostrados = 0;
+        for (String fila : filas) {
+            if (fila == null) continue;
+            String[] campos = fila.split("\\t", 3);
+            if (campos.length != 3) continue;
+
+            final int instancia;
+            final int jugadorActual;
+            try {
+                instancia = Integer.parseInt(campos[0]);
+                jugadorActual = Integer.parseInt(campos[1]);
+            } catch (NumberFormatException error) {
+                continue;
+            }
+            final String nombre = campos[2];
+
+            LinearLayout tarjeta = Vitrine.painel(ctx);
+            TextView nombreView = new TextView(ctx);
+            nombreView.setText(nombre);
+            nombreView.setTextColor(Vitrine.TEXTO);
+            nombreView.setTextSize(15f);
+            nombreView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            nombreView.setPadding(Vitrine.dp(ctx, 16), Vitrine.dp(ctx, 14),
+                                  Vitrine.dp(ctx, 16), Vitrine.dp(ctx, 3));
+            tarjeta.addView(nombreView);
+
+            TextView estado = new TextView(ctx);
+            estado.setText(jugadorActual > 0
+                    ? ctx.getString(R.string.controller_current_player, jugadorActual)
+                    : ctx.getString(R.string.controller_current_unassigned));
+            estado.setTextColor(Vitrine.TEXTO_2);
+            estado.setTextSize(12f);
+            estado.setPadding(Vitrine.dp(ctx, 16), 0, Vitrine.dp(ctx, 16), Vitrine.dp(ctx, 8));
+            tarjeta.addView(estado);
+
+            LinearLayout fila12 = new LinearLayout(ctx);
+            fila12.setOrientation(LinearLayout.HORIZONTAL);
+            agregarBotonJugador(ctx, fila12, lista, instancia, jugadorActual, 1);
+            agregarBotonJugador(ctx, fila12, lista, instancia, jugadorActual, 2);
+            tarjeta.addView(fila12, parametrosFilaMandos(ctx));
+
+            LinearLayout fila34 = new LinearLayout(ctx);
+            fila34.setOrientation(LinearLayout.HORIZONTAL);
+            agregarBotonJugador(ctx, fila34, lista, instancia, jugadorActual, 3);
+            agregarBotonJugador(ctx, fila34, lista, instancia, jugadorActual, 4);
+
+            TextView soltar = Vitrine.botao(ctx, ctx.getString(R.string.controller_unassign),
+                    jugadorActual == 0 ? Vitrine.MATERIAL_ALT : Vitrine.AZUL,
+                    jugadorActual == 0);
+            soltar.setOnClickListener(view -> asignarControlador(ctx, lista, instancia, 0));
+            LinearLayout.LayoutParams lpSoltar = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            lpSoltar.setMargins(Vitrine.dp(ctx, 4), Vitrine.dp(ctx, 4),
+                                Vitrine.dp(ctx, 4), Vitrine.dp(ctx, 4));
+            fila34.addView(soltar, lpSoltar);
+            tarjeta.addView(fila34, parametrosFilaMandos(ctx));
+
+            LinearLayout.LayoutParams lpTarjeta = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lpTarjeta.bottomMargin = Vitrine.dp(ctx, 12);
+            lista.addView(tarjeta, lpTarjeta);
+            mostrados++;
+        }
+
+        if (mostrados == 0) {
+            nota(ctx, lista, ctx.getString(R.string.controllers_none));
+        }
+    }
+
+    private static LinearLayout.LayoutParams parametrosFilaMandos(Context ctx) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.leftMargin = Vitrine.dp(ctx, 8);
+        lp.rightMargin = Vitrine.dp(ctx, 8);
+        return lp;
+    }
+
+    private static void agregarBotonJugador(Context ctx, LinearLayout fila, LinearLayout lista,
+                                            int instancia, int jugadorActual, int jugador) {
+        TextView boton = Vitrine.botao(ctx, ctx.getString(R.string.controller_player_button, jugador),
+                jugadorActual == jugador ? Vitrine.AZUL : Vitrine.MATERIAL_ALT,
+                jugadorActual == jugador);
+        boton.setOnClickListener(view -> asignarControlador(ctx, lista, instancia, jugador));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        lp.setMargins(Vitrine.dp(ctx, 4), Vitrine.dp(ctx, 4),
+                      Vitrine.dp(ctx, 4), Vitrine.dp(ctx, 4));
+        fila.addView(boton, lp);
+    }
+
+    private static void asignarControlador(Context ctx, LinearLayout lista,
+                                           int instancia, int jugador) {
+        final boolean correcto;
+        try {
+            correcto = StrikersActivity.nativeAssignController(instancia, jugador);
+        } catch (UnsatisfiedLinkError | RuntimeException error) {
+            android.util.Log.w("strikers", "No se pudo asignar el mando SDL", error);
+            Toast.makeText(ctx, R.string.controller_assign_failed, Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        if (!correcto) {
+            Toast.makeText(ctx, R.string.controller_assign_failed, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (jugador == 0) {
+            Toast.makeText(ctx, R.string.controller_unassign_success, Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(ctx, ctx.getString(R.string.controller_assign_success, jugador),
+                           Toast.LENGTH_SHORT).show();
+        }
+        llenarListaControladores(ctx, lista);
     }
 
     private static void video(Context ctx, Preferencias prefs, LinearLayout v) {

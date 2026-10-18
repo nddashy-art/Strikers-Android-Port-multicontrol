@@ -103,4 +103,19 @@
     <string name="flag_motto" translatable="false">ORDEM E PROGRESSO</string>
     <string name="flag_credit" translatable="false">Port para Android por Luis Santos</string>
     <string name="flag_country" translatable="false">BRASIL</string>
+
+
+    <!-- Physical gamepad assignment -->
+    <string name="sec_controllers">Physical controllers</string>
+    <string name="controllers_title">Detected controllers</string>
+    <string name="controllers_help">Connect a physical controller or start the phone-controller app first, then refresh. Choose which player receives each device. This page can only query controllers while the game is running.</string>
+    <string name="controllers_refresh">Refresh devices</string>
+    <string name="controllers_none">No SDL gamepads found. Connect a controller, then refresh. If the phone-controller app only sends keyboard keys, SDL may not list it as a gamepad.</string>
+    <string name="controller_player_button">Player %1$d</string>
+    <string name="controller_current_unassigned">Current assignment: unassigned</string>
+    <string name="controller_current_player">Current assignment: Player %1$d</string>
+    <string name="controller_unassign">Unassign</string>
+    <string name="controller_assign_success">Controller assigned to Player %1$d.</string>
+    <string name="controller_unassign_success">Controller left unassigned.</string>
+    <string name="controller_assign_failed">Could not assign this controller. Refresh the list and try again.</string>
 </resources>

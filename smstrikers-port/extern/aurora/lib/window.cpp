@@ -108,7 +108,8 @@ bool add_fallback_gamepad_mapping(SDL_JoystickID instance) {
     mapping += ",dpup:b11,dpdown:b12,dpleft:b13,dpright:b14";
   }
 
-  if (!SDL_AddGamepadMapping(mapping.c_str())) {
+  const int mappingResult = SDL_AddGamepadMapping(mapping.c_str());
+  if (mappingResult < 0) {
     Log.warn("Failed to add fallback gamepad mapping for '{}': {}", joystickName, SDL_GetError());
     return false;
   }

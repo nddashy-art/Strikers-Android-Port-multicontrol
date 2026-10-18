@@ -21,6 +21,11 @@ import dev.encounter.aurora.AuroraSurface;
 /** O jogo. Tudo que decide se ele pode começar está em {@link SetupActivity}. */
 public class StrikersActivity extends SDLActivity {
 
+    // The native side queries devices and applies assignments on SDL's event thread.
+    // Player 0 means unassigned; players 1..4 select PAD ports 0..3.
+    static native String[] nativeGetControllers();
+    static native boolean nativeAssignController(int instanceId, int playerNumber);
+
     private OverlayView overlay;
     private HudView hud;
     private Preferencias prefs;

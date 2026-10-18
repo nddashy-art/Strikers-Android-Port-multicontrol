@@ -84,4 +84,19 @@
     <string name="drv_a8xx_desc">A compilação para a família 8xx, que é a do Snapdragon 8 Elite.</string>
     <string name="drv_general_desc">A compilação para as demais Adreno.</string>
     <string name="drv_qualcomm_desc">Um driver da própria Qualcomm, mais novo do que o do aparelho.</string>
+
+
+    <!-- Physical gamepad assignment -->
+    <string name="sec_controllers">Controles físicos</string>
+    <string name="controllers_title">Controles detectados</string>
+    <string name="controllers_help">Conecte um controle físico ou abra primeiro o aplicativo que transforma o celular em controle; depois atualize. Escolha a qual jogador cada dispositivo será atribuído. Esta página só consulta controles enquanto o jogo está aberto.</string>
+    <string name="controllers_refresh">Atualizar lista</string>
+    <string name="controllers_none">Nenhum gamepad SDL encontrado. Conecte um controle e atualize. Se o aplicativo do celular só enviar teclas, o SDL talvez não o liste como gamepad.</string>
+    <string name="controller_player_button">Jogador %1$d</string>
+    <string name="controller_current_unassigned">Atribuição atual: sem atribuição</string>
+    <string name="controller_current_player">Atribuição atual: jogador %1$d</string>
+    <string name="controller_unassign">Não atribuir</string>
+    <string name="controller_assign_success">Controle atribuído ao jogador %1$d.</string>
+    <string name="controller_unassign_success">Controle removido da atribuição.</string>
+    <string name="controller_assign_failed">Não foi possível atribuir o controle. Atualize a lista e tente novamente.</string>
 </resources>
