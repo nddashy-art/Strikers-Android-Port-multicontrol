@@ -31,6 +31,14 @@ std::atomic<int> s_stickY{0};
 std::atomic<int> s_cstickX{0};
 std::atomic<int> s_cstickY{0};
 
+// A separate virtual gamepad driven by the Wi-Fi companion. All SDL joystick API calls
+// stay on the game thread; the UDP receiver only writes these atomics through JNI.
+std::atomic<bool> s_remoteRequested{false};
+std::atomic<int> s_remoteButtons{0}, s_remoteTriggerL{0}, s_remoteTriggerR{0};
+std::atomic<int> s_remoteStickX{0}, s_remoteStickY{0}, s_remoteCstickX{0}, s_remoteCstickY{0};
+SDL_JoystickID s_remoteId = 0;
+SDL_Joystick* s_remote = nullptr;
+
 // The bits Toque.java sends. They are ours, not anyone's hardware: the overlay
 // speaks GameCube and the mapping to SDL happens here, once.
 enum
@@ -69,7 +77,7 @@ bool real_gamepad_connected()
     bool found = false;
     for (int i = 0; i < count; i++)
     {
-        if (ids[i] != s_virtualId)
+        if (ids[i] != s_virtualId && ids[i] != s_remoteId)
         {
             found = true;
             break;
@@ -201,6 +209,78 @@ void push_state()
                                (Sint16)s_cstickY.load(std::memory_order_relaxed));
 }
 
+// These helpers only run from PortTouchDraw on the game/SDL thread.
+void attach_remote()
+{
+    if (s_remote != nullptr) return;
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = (Uint16)SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
+    desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+    desc.name = "Strikers Wi-Fi Controller";
+    desc.button_mask = (1u << SDL_GAMEPAD_BUTTON_SOUTH) | (1u << SDL_GAMEPAD_BUTTON_EAST) |
+        (1u << SDL_GAMEPAD_BUTTON_WEST) | (1u << SDL_GAMEPAD_BUTTON_NORTH) |
+        (1u << SDL_GAMEPAD_BUTTON_START) | (1u << SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER) |
+        (1u << SDL_GAMEPAD_BUTTON_BACK) | (1u << SDL_GAMEPAD_BUTTON_LEFT_STICK) |
+        (1u << SDL_GAMEPAD_BUTTON_RIGHT_STICK) | (1u << SDL_GAMEPAD_BUTTON_DPAD_UP) |
+        (1u << SDL_GAMEPAD_BUTTON_DPAD_DOWN) | (1u << SDL_GAMEPAD_BUTTON_DPAD_LEFT) |
+        (1u << SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    desc.axis_mask = (1u << SDL_GAMEPAD_AXIS_LEFTX) | (1u << SDL_GAMEPAD_AXIS_LEFTY) |
+        (1u << SDL_GAMEPAD_AXIS_RIGHTX) | (1u << SDL_GAMEPAD_AXIS_RIGHTY) |
+        (1u << SDL_GAMEPAD_AXIS_LEFT_TRIGGER) | (1u << SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
+    s_remoteId = SDL_AttachVirtualJoystick(&desc);
+    if (s_remoteId == 0) {
+        std::fprintf(stderr, "[remote-pad] could not attach virtual controller: %s\\n", SDL_GetError());
+        return;
+    }
+    s_remote = SDL_OpenJoystick(s_remoteId);
+    if (s_remote == nullptr) {
+        std::fprintf(stderr, "[remote-pad] could not open virtual controller: %s\\n", SDL_GetError());
+        SDL_DetachVirtualJoystick(s_remoteId);
+        s_remoteId = 0;
+        return;
+    }
+    std::fprintf(stderr, "[remote-pad] Wi-Fi controller attached as joystick %u\\n", (unsigned)s_remoteId);
+}
+
+void detach_remote()
+{
+    if (s_remote == nullptr) return;
+    SDL_CloseJoystick(s_remote);
+    SDL_DetachVirtualJoystick(s_remoteId);
+    s_remote = nullptr;
+    s_remoteId = 0;
+    std::fprintf(stderr, "[remote-pad] Wi-Fi controller detached\\n");
+}
+
+void push_remote_state()
+{
+    if (s_remote == nullptr) return;
+    const int b = s_remoteButtons.load(std::memory_order_relaxed);
+    SDL_SetJoystickVirtualButton(s_remote, SDL_GAMEPAD_BUTTON_SOUTH, (b & TOUCH_A) != 0);
+    SDL_SetJoystickVirtualButton(s_remote, SDL_GAMEPAD_BUTTON_EAST, (b & TOUCH_B) != 0);
+    SDL_SetJoystickVirtualButton(s_remote, SDL_GAMEPAD_BUTTON_WEST, (b & TOUCH_X) != 0);
+    SDL_SetJoystickVirtualButton(s_remote, SDL_GAMEPAD_BUTTON_NORTH, (b & TOUCH_Y) != 0);
+    SDL_SetJoystickVirtualButton(s_remote, SDL_GAMEPAD_BUTTON_START, (b & TOUCH_START) != 0);
+    SDL_SetJoystickVirtualButton(s_remote, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, (b & (TOUCH_Z | TOUCH_LB)) != 0);
+    SDL_SetJoystickVirtualButton(s_remote, SDL_GAMEPAD_BUTTON_BACK, (b & TOUCH_BACK) != 0);
+    SDL_SetJoystickVirtualButton(s_remote, SDL_GAMEPAD_BUTTON_LEFT_STICK, (b & TOUCH_L3) != 0);
+    SDL_SetJoystickVirtualButton(s_remote, SDL_GAMEPAD_BUTTON_RIGHT_STICK, (b & TOUCH_R3) != 0);
+    SDL_SetJoystickVirtualButton(s_remote, SDL_GAMEPAD_BUTTON_DPAD_UP, (b & TOUCH_UP) != 0);
+    SDL_SetJoystickVirtualButton(s_remote, SDL_GAMEPAD_BUTTON_DPAD_DOWN, (b & TOUCH_DOWN) != 0);
+    SDL_SetJoystickVirtualButton(s_remote, SDL_GAMEPAD_BUTTON_DPAD_LEFT, (b & TOUCH_LEFT) != 0);
+    SDL_SetJoystickVirtualButton(s_remote, SDL_GAMEPAD_BUTTON_DPAD_RIGHT, (b & TOUCH_RIGHT) != 0);
+    SDL_SetJoystickVirtualAxis(s_remote, SDL_GAMEPAD_AXIS_LEFT_TRIGGER,
+        (Sint16)(s_remoteTriggerL.load(std::memory_order_relaxed) * SDL_JOYSTICK_AXIS_MAX / 255));
+    SDL_SetJoystickVirtualAxis(s_remote, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER,
+        (Sint16)(s_remoteTriggerR.load(std::memory_order_relaxed) * SDL_JOYSTICK_AXIS_MAX / 255));
+    SDL_SetJoystickVirtualAxis(s_remote, SDL_GAMEPAD_AXIS_LEFTX, (Sint16)s_remoteStickX.load(std::memory_order_relaxed));
+    SDL_SetJoystickVirtualAxis(s_remote, SDL_GAMEPAD_AXIS_LEFTY, (Sint16)s_remoteStickY.load(std::memory_order_relaxed));
+    SDL_SetJoystickVirtualAxis(s_remote, SDL_GAMEPAD_AXIS_RIGHTX, (Sint16)s_remoteCstickX.load(std::memory_order_relaxed));
+    SDL_SetJoystickVirtualAxis(s_remote, SDL_GAMEPAD_AXIS_RIGHTY, (Sint16)s_remoteCstickY.load(std::memory_order_relaxed));
+}
+
 bool suppressed()
 {
     static int s_off = -1;
@@ -223,28 +303,30 @@ extern "C" void PortTouchEvent(const SDL_Event* event) { (void)event; }
 
 extern "C" void PortTouchDraw(void)
 {
+    // Keep Wi-Fi input independent of the ordinary touch overlay and physical pads.
+    if (s_remoteRequested.load(std::memory_order_acquire)) {
+        if (s_remote == nullptr) attach_remote();
+        push_remote_state();
+    } else if (s_remote != nullptr) {
+        detach_remote();
+    }
+
     if (s_disabled || suppressed())
         return;
 
-    if (!s_tried)
-    {
+    if (!s_tried) {
         s_tried = true;
         attach();
     }
 
-    if (real_gamepad_connected())
-    {
+    if (real_gamepad_connected()) {
         detach();
         return;
     }
-    if (s_virtual == nullptr)
-    {
-        // Detached because a controller arrived, and now it is gone.
+    if (s_virtual == nullptr) {
         attach();
-        if (s_virtual == nullptr)
-            return;
+        if (s_virtual == nullptr) return;
     }
-
     push_state();
 }
 
@@ -277,11 +359,22 @@ Java_io_github_newcoke_strikers_Toque_enviar(JNIEnv*, jclass, jint botoes, jint 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_io_github_newcoke_strikers_Toque_pronto(JNIEnv*, jclass)
 {
-    // True once there is somewhere for the state to go. Asked rather than
-    // assumed: SDLActivity loads the library inside onCreate, and anything of
-    // ours that arrives before that finds a native method with no
-    // implementation.
     return s_showing.load(std::memory_order_acquire) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_io_github_newcoke_strikers_StrikersActivity_nativeRemoteState(
+    JNIEnv*, jclass, jboolean active, jint buttons, jint triggerL, jint triggerR,
+    jint lx, jint ly, jint cx, jint cy)
+{
+    s_remoteButtons.store((int)buttons, std::memory_order_relaxed);
+    s_remoteTriggerL.store((int)triggerL, std::memory_order_relaxed);
+    s_remoteTriggerR.store((int)triggerR, std::memory_order_relaxed);
+    s_remoteStickX.store((int)lx, std::memory_order_relaxed);
+    s_remoteStickY.store((int)ly, std::memory_order_relaxed);
+    s_remoteCstickX.store((int)cx, std::memory_order_relaxed);
+    s_remoteCstickY.store((int)cy, std::memory_order_relaxed);
+    s_remoteRequested.store(active == JNI_TRUE, std::memory_order_release);
 }
 
 #else // !__ANDROID__ || !PORT_USE_AURORA
