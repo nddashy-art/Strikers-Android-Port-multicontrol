@@ -40,7 +40,7 @@ jobs:
 
       - name: Build native game library
         working-directory: smstrikers-port
-        run: tools/build-android.sh
+        run: sh tools/build-android.sh
 
       - name: Package debug APK
         working-directory: smstrikers-port/android
