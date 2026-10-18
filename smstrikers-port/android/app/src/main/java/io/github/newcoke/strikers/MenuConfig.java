@@ -43,6 +43,15 @@ final class MenuConfig {
 
     interface AoFechar { void fechou(); }
 
+    // Durante a partida, el menú se dibuja dentro de la ventana SDL/Vulkan
+    // en vez de abrir un segundo Window encima de la superficie de vídeo.
+    private static Runnable cerrarMenuSuperpuesto;
+
+    static void cerrar(Context ctx) {
+        Runnable cerrar = cerrarMenuSuperpuesto;
+        if (cerrar != null) cerrar.run();
+    }
+
     // DE UM MÉTODO E NÃO DE UMA CONSTANTE: um array estático seria montado uma
     // vez por processo, no idioma que valia naquele instante, e continuaria em
     // memória depois de o idioma mudar. Os rótulos do trilho ficariam no idioma
@@ -71,6 +80,10 @@ final class MenuConfig {
     /** Abre una sección concreta; se usa para el atajo de mandos desde la pantalla inicial. */
     static void abrir(final Context ctx, final Preferencias prefs, final AoFechar aoFechar,
                       final int secaoInicial) {
+        if (ctx instanceof StrikersActivity) {
+            abrirSuperpuesto((StrikersActivity) ctx, prefs, aoFechar, secaoInicial);
+            return;
+        }
         // SUBCLASSE ANÔNIMA por causa do onWindowFocusChanged: esconder as
         // barras uma vez, antes de mostrar, não basta. O sistema traz as barras
         // de volta toda vez que a janela perde e recupera o foco -- e ela perde
@@ -170,6 +183,109 @@ final class MenuConfig {
             if (aoFechar != null) aoFechar.fechou();
         });
         dialogo.show();
+    }
+
+    /**
+     * Menú dentro de la ventana SDL de la partida, sin crear otro Dialog/Window.
+     */
+    private static void abrirSuperpuesto(final StrikersActivity activity,
+                                         final Preferencias prefs,
+                                         final AoFechar aoFechar,
+                                         final int secaoInicial) {
+        final Context ctx = activity;
+        final FrameLayout host = activity.findViewById(android.R.id.content);
+        if (host == null) throw new IllegalStateException("No se encontró la vista raíz del juego");
+
+        final FrameLayout[] raizMenu = new FrameLayout[1];
+        final boolean[] finalizado = {false};
+        final Runnable[] finalizarRef = new Runnable[1];
+        final Runnable finalizar = () -> {
+            if (finalizado[0]) return;
+            finalizado[0] = true;
+            if (raizMenu[0] != null && raizMenu[0].getParent() instanceof ViewGroup) {
+                ((ViewGroup) raizMenu[0].getParent()).removeView(raizMenu[0]);
+            }
+            if (cerrarMenuSuperpuesto == finalizarRef[0]) cerrarMenuSuperpuesto = null;
+            if (!Configuracao.gravar(ctx, prefs)) {
+                Toast.makeText(ctx, R.string.ini_write_failed, Toast.LENGTH_LONG).show();
+            }
+            if (aoFechar != null) aoFechar.fechou();
+        };
+        finalizarRef[0] = finalizar;
+        cerrarMenuSuperpuesto = finalizar;
+
+        final LinearLayout trilho = new LinearLayout(ctx);
+        trilho.setOrientation(LinearLayout.VERTICAL);
+        trilho.setPadding(Vitrine.dp(ctx, 24), Vitrine.dp(ctx, 24),
+                          Vitrine.dp(ctx, 8), Vitrine.dp(ctx, 24));
+
+        final ScrollView rolagem = new ScrollView(ctx);
+        rolagem.setPadding(Vitrine.dp(ctx, 8), Vitrine.dp(ctx, 24),
+                           Vitrine.dp(ctx, 24), Vitrine.dp(ctx, 24));
+        rolagem.setClipToPadding(false);
+
+        final String[] secoes = secoes(ctx);
+        final TextView[] abas = new TextView[secoes.length];
+        final int[] atual = {Math.max(0, Math.min(secaoInicial, secoes.length - 1))};
+
+        final Runnable pintar = () -> {
+            for (int i = 0; i < abas.length; i++) {
+                abas[i].setSelected(i == atual[0]);
+                abas[i].setTextColor(i == atual[0] ? Vitrine.TEXTO : Vitrine.TEXTO_2);
+                abas[i].invalidate();
+            }
+            rolagem.removeAllViews();
+            rolagem.addView(conteudo(ctx, prefs, atual[0], null));
+            rolagem.scrollTo(0, 0);
+        };
+
+        TextView titulo = new TextView(ctx);
+        titulo.setText(R.string.settings);
+        titulo.setTextColor(Vitrine.TEXTO);
+        titulo.setTextSize(22f);
+        titulo.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        titulo.setPadding(Vitrine.dp(ctx, 14), 0, 0, Vitrine.dp(ctx, 12));
+        trilho.addView(titulo);
+
+        for (int i = 0; i < secoes.length; i++) {
+            final int qual = i;
+            abas[i] = aba(ctx, secoes[i]);
+            abas[i].setOnClickListener(v -> {
+                atual[0] = qual;
+                pintar.run();
+            });
+            trilho.addView(abas[i]);
+        }
+
+        TextView fechar = Vitrine.botao(ctx, ctx.getString(R.string.done), Vitrine.AZUL, true);
+        fechar.setOnClickListener(v -> finalizar.run());
+        LinearLayout.LayoutParams lpf = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lpf.topMargin = Vitrine.dp(ctx, 20);
+        trilho.addView(fechar, lpf);
+
+        pintar.run();
+
+        LinearLayout colunas = new LinearLayout(ctx);
+        colunas.setOrientation(LinearLayout.HORIZONTAL);
+        colunas.addView(trilho, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 0.28f));
+        colunas.addView(rolagem, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 0.72f));
+
+        FrameLayout pilha = new FrameLayout(ctx);
+        pilha.setFocusableInTouchMode(true);
+        pilha.setBackgroundColor(Color.BLACK);
+        pilha.addView(Vitrine.fundo(ctx));
+        pilha.addView(colunas, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        recuarDoSistema(colunas);
+
+        raizMenu[0] = pilha;
+        host.addView(pilha, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        pilha.bringToFront();
+        pilha.requestFocus();
     }
 
     /**
