@@ -184,6 +184,20 @@ public class SetupActivity extends Activity {
 
         opcoes.addView(Vitrine.separador(ctx));
 
+        // Atajo de la pantalla inicial: iniciar el juego y abrir directamente
+        // la sección de mandos, que necesita el servidor Wi-Fi en ejecución.
+        LinearLayout linhaMandos = Vitrine.linha(ctx, getString(R.string.sec_controllers),
+                getString(R.string.controllers_help), seta(ctx));
+        linhaMandos.setClickable(true);
+        linhaMandos.setOnClickListener(v -> {
+            Intent intent = new Intent(ctx, StrikersActivity.class);
+            intent.putExtra(StrikersActivity.EXTRA_ABRIR_MANDOS, true);
+            startActivity(intent);
+        });
+        opcoes.addView(linhaMandos);
+
+        opcoes.addView(Vitrine.separador(ctx));
+
         LinearLayout linhaDriver = Vitrine.linha(ctx, getString(R.string.video_driver),
                 getString(R.string.video_driver_sub), seta(ctx));
         linhaDriver.setClickable(true);
