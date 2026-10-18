@@ -71,7 +71,7 @@ public class StrikersActivity extends SDLActivity {
         telaCheia();
 
         prefs = new Preferencias(this);
-        servidorWifi = new ControladorWifiServer(this);
+        servidorWifi = new ControladorWifiServer();
         servidorWifi.start();
         overlay = new OverlayView(this);
         overlay.recarregar(prefs);
