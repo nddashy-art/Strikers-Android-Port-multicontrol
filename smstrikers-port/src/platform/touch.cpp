@@ -303,13 +303,20 @@ extern "C" void PortTouchEvent(const SDL_Event* event) { (void)event; }
 
 extern "C" void PortTouchDraw(void)
 {
-    // Keep Wi-Fi input independent of the ordinary touch overlay and physical pads.
-    if (s_remoteRequested.load(std::memory_order_acquire)) {
-        if (s_remote == nullptr) attach_remote();
-        push_remote_state();
-    } else if (s_remote != nullptr) {
-        detach_remote();
+    // Keep a separate Wi-Fi virtual pad registered from the start, so it can be
+    // assigned to Player 2 in settings before the second phone connects. If the
+    // network session is inactive, all controls stay released.
+    if (s_remote == nullptr) attach_remote();
+    if (!s_remoteRequested.load(std::memory_order_acquire)) {
+        s_remoteButtons.store(0, std::memory_order_relaxed);
+        s_remoteTriggerL.store(0, std::memory_order_relaxed);
+        s_remoteTriggerR.store(0, std::memory_order_relaxed);
+        s_remoteStickX.store(0, std::memory_order_relaxed);
+        s_remoteStickY.store(0, std::memory_order_relaxed);
+        s_remoteCstickX.store(0, std::memory_order_relaxed);
+        s_remoteCstickY.store(0, std::memory_order_relaxed);
     }
+    push_remote_state();
 
     if (s_disabled || suppressed())
         return;
