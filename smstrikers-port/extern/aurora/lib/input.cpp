@@ -298,7 +298,6 @@ GameController* get_controller_for_player(uint32_t player) noexcept {
     }
   }
 
-#if 1
   /* If we don't have a controller assigned to this port use the first unassigned controller */
   if (!g_GameControllers.empty()) {
     int32_t availIndex = -1;
