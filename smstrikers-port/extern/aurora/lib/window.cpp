@@ -29,6 +29,7 @@ extern "C" void Android_UnlockActivityMutex(void);
 
 #include <algorithm>
 #include <atomic>
+#include <string>
 #include <vector>
 
 #include "rmlui.hpp"
@@ -38,6 +39,77 @@ extern "C" void Android_UnlockActivityMutex(void);
 namespace aurora::window {
 namespace {
 constexpr Module Log{"aurora::window"};
+
+// Some Android controller apps expose a standard joystick, but SDL has no built-in
+// gamepad mapping for it. Aurora currently consumes SDL's higher-level gamepad API,
+// so add a conservative fallback mapping for unknown devices with enough controls.
+void add_fallback_gamepad_mapping(SDL_JoystickID instance) {
+  if (SDL_IsGamepad(instance)) {
+    return;
+  }
+
+  const char* reportedName = SDL_GetJoystickNameForID(instance);
+  const std::string joystickName = reportedName != nullptr ? reportedName : "unknown joystick";
+  SDL_Joystick* joystick = SDL_OpenJoystick(instance);
+  if (joystick == nullptr) {
+    Log.warn("Unmapped joystick '{}' (instance {}) could not be opened: {}", joystickName, instance, SDL_GetError());
+    return;
+  }
+
+  const int axes = SDL_GetNumJoystickAxes(joystick);
+  const int buttons = SDL_GetNumJoystickButtons(joystick);
+  const int hats = SDL_GetNumJoystickHats(joystick);
+  const SDL_GUID guid = SDL_GetJoystickGUID(joystick);
+  SDL_CloseJoystick(joystick);
+
+  char guidText[33] = {};
+  SDL_GUIDToString(guid, guidText, sizeof(guidText));
+  Log.info("Unmapped joystick '{}' (instance {}, axes {}, buttons {}, hats {}, GUID {})",
+           joystickName, instance, axes, buttons, hats, guidText);
+
+  // Do not turn mice, keyboards or very limited HID devices into gamepads.
+  if (axes < 2 || buttons < 4) {
+    Log.warn("Ignoring unmapped joystick '{}': it does not expose enough axes/buttons for a gamepad",
+             joystickName);
+    return;
+  }
+
+  std::string mapping = std::string(guidText) +
+      ",Strikers Generic Gamepad,a:b0,b:b1,x:b2,y:b3,leftx:a0,lefty:a1~";
+  if (axes >= 4) {
+    mapping += ",rightx:a2,righty:a3~";
+  }
+  if (axes >= 6) {
+    mapping += ",lefttrigger:a4,righttrigger:a5";
+  }
+  if (buttons >= 6) {
+    mapping += ",leftshoulder:b4,rightshoulder:b5";
+  }
+  if (buttons >= 8) {
+    mapping += ",back:b6,start:b7";
+  }
+  if (buttons >= 9) {
+    mapping += ",guide:b8";
+  }
+  if (buttons >= 10) {
+    mapping += ",leftstick:b9";
+  }
+  if (buttons >= 11) {
+    mapping += ",rightstick:b10";
+  }
+  if (hats >= 1) {
+    mapping += ",dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8";
+  } else if (buttons >= 15) {
+    mapping += ",dpup:b11,dpdown:b12,dpleft:b13,dpright:b14";
+  }
+
+  const int result = SDL_AddGamepadMapping(mapping.c_str());
+  if (result < 0) {
+    Log.warn("Failed to add fallback gamepad mapping for '{}': {}", joystickName, SDL_GetError());
+  } else {
+    Log.info("Added fallback SDL gamepad mapping for '{}' (instance {})", joystickName, instance);
+  }
+}
 
 SDL_Window* g_window;
 SDL_Renderer* g_renderer;
@@ -165,6 +237,10 @@ void process_event(SDL_Event& event) {
   }
 
   switch (event.type) {
+  case SDL_EVENT_JOYSTICK_ADDED: {
+    add_fallback_gamepad_mapping(event.jdevice.which);
+    break;
+  }
   case SDL_EVENT_WINDOW_MOVED: {
     if (!primaryWindow) {
       break;
