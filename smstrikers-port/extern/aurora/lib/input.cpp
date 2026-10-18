@@ -328,6 +328,14 @@ Sint32 get_instance_for_player(uint32_t player) noexcept {
 }
 
 SDL_JoystickID add_controller(SDL_JoystickID which) noexcept {
+  // A generic Android joystick may be mapped at SDL_EVENT_JOYSTICK_ADDED,
+  // before SDL emits its normal SDL_EVENT_GAMEPAD_ADDED notification.
+  // Do not open and overwrite an instance that is already in our registry.
+  if (g_GameControllers.find(which) != g_GameControllers.end()) {
+    Log.debug("Ignoring duplicate controller-added event for instance {}", which);
+    return -1;
+  }
+
   auto* ctrl = SDL_OpenGamepad(which);
   if (ctrl != nullptr) {
     GameController controller;
