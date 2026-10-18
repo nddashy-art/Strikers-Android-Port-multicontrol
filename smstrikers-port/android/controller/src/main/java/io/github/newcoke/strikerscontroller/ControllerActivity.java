@@ -29,11 +29,15 @@ public final class ControllerActivity extends Activity {
     private TextView status;
     private Client client;
     private String host="",pin="";
+    private android.content.SharedPreferences saved;
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
         setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        saved = getSharedPreferences("controller_plus", MODE_PRIVATE);
+        host = saved.getString("host", "");
+        pin = saved.getString("pin", "");
         showSetup();
     }
     private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
@@ -43,7 +47,7 @@ public final class ControllerActivity extends Activity {
     private void showSetup(){
         LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setGravity(Gravity.CENTER);
         root.setPadding(dp(28),dp(16),dp(28),dp(16));root.setBackgroundColor(Color.rgb(17,24,39));
-        TextView title=text("Strikers Wi-Fi Controller",24);title.setTypeface(null,1);
+        TextView title=text("Strikers Wi-Fi Controller Plus",24);title.setTypeface(null,1);
         root.addView(title,new LinearLayout.LayoutParams(-1,dp(44)));
         root.addView(text("Conecta ambos teléfonos a la misma Wi-Fi o conecta este teléfono al punto de acceso del móvil que ejecuta Strikers.",14),
                 new LinearLayout.LayoutParams(-1,dp(50)));
@@ -66,6 +70,7 @@ public final class ControllerActivity extends Activity {
     private void connect(){
         host=hostField.getText().toString().trim();pin=pinField.getText().toString().trim();
         if(host.isEmpty()||!pin.matches("\\d{6}")){status.setText("Escribe la IP y el código de 6 dígitos de Strikers.");return;}
+        saved.edit().putString("host", host).putString("pin", pin).apply();
         if(client!=null)client.close();
         client=new Client(host,pin,ok->ui.post(()->{if(status!=null)status.setText(ok?"Conectado a Strikers. ¡A jugar!":"Buscando Strikers… revisa IP, código y Wi-Fi.");}));
         showPad();client.start();
