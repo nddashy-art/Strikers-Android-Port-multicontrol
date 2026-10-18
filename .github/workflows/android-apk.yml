@@ -1,0 +1,53 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - fix/multicontroller-cloud-build
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build components
+        run: |
+          sdkmanager "ndk;29.0.14206865" "platforms;android-35" "build-tools;35.0.1"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Build native game library
+        working-directory: smstrikers-port
+        run: tools/build-android.sh
+
+      - name: Package debug APK
+        working-directory: smstrikers-port/android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: strikers-android-debug-apk
+          path: smstrikers-port/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
