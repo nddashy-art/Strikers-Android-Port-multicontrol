@@ -315,7 +315,6 @@ GameController* get_controller_for_player(uint32_t player) noexcept {
       return ct;
     }
   }
-#endif
   return nullptr;
 }
 
