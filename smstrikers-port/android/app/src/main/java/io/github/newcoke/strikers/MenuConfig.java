@@ -65,6 +65,12 @@ final class MenuConfig {
     }
 
     static void abrir(final Context ctx, final Preferencias prefs, final AoFechar aoFechar) {
+        abrir(ctx, prefs, aoFechar, 0);
+    }
+
+    /** Abre una sección concreta; se usa para el atajo de mandos desde la pantalla inicial. */
+    static void abrir(final Context ctx, final Preferencias prefs, final AoFechar aoFechar,
+                      final int secaoInicial) {
         // SUBCLASSE ANÔNIMA por causa do onWindowFocusChanged: esconder as
         // barras uma vez, antes de mostrar, não basta. O sistema traz as barras
         // de volta toda vez que a janela perde e recupera o foco -- e ela perde
@@ -92,7 +98,7 @@ final class MenuConfig {
 
         final String[] secoes = secoes(ctx);
         final TextView[] abas = new TextView[secoes.length];
-        final int[] atual = {0};
+        final int[] atual = {Math.max(0, Math.min(secaoInicial, secoes.length - 1))};
 
         final Runnable pintar = () -> {
             for (int i = 0; i < abas.length; i++) {
@@ -351,13 +357,15 @@ final class MenuConfig {
 
         TextView actualizar = Vitrine.botao(ctx, ctx.getString(R.string.controllers_refresh),
                                             Vitrine.AZUL, true);
-        actualizar.setOnClickListener(view -> llenarListaControladores(ctx, lista));
+        actualizar.setOnClickListener(view -> lista.post(() -> llenarListaControladores(ctx, lista)));
         LinearLayout.LayoutParams lpActualizar = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lpActualizar.topMargin = Vitrine.dp(ctx, 12);
         v.addView(actualizar, lpActualizar);
 
-        llenarListaControladores(ctx, lista);
+        // Consulta os dispositivos depois que a página está anexada à janela; não durante
+        // a montagem do diálogo, quando a superfície do jogo ainda está trocando de foco.
+        lista.post(() -> llenarListaControladores(ctx, lista));
     }
 
     private static void llenarListaControladores(Context ctx, LinearLayout lista) {
