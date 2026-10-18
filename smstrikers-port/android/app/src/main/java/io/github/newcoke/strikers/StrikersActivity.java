@@ -199,12 +199,16 @@ public class StrikersActivity extends SDLActivity {
             overlay.setVisibility(View.GONE);
         }
         try {
-            MenuConfig.abrir(this, prefs, () -> {
-                menuAbierto = false;
-                if (overlay != null && prefs != null) overlay.recarregar(prefs);
-            }, seccion);
+            String[] infoWifi = informacionControlWifi();
+            android.content.Intent intent = new android.content.Intent(this, MenuActivity.class);
+            intent.putExtra(MenuActivity.EXTRA_SECTION, seccion);
+            intent.putExtra(MenuActivity.EXTRA_WIFI_IP, infoWifi[0]);
+            intent.putExtra(MenuActivity.EXTRA_WIFI_PIN, infoWifi[1]);
+            intent.putExtra(MenuActivity.EXTRA_WIFI_STATUS, infoWifi[2]);
+            startActivity(intent);
         } catch (RuntimeException error) {
             menuAbierto = false;
+            if (overlay != null) overlay.setVisibility(Toque.ligada() ? View.VISIBLE : View.GONE);
             android.util.Log.e("strikers", "No se pudo abrir el menú de ajustes", error);
             android.widget.Toast.makeText(this, "No se pudo abrir el menú. Inténtalo de nuevo.",
                     android.widget.Toast.LENGTH_LONG).show();
@@ -241,6 +245,9 @@ public class StrikersActivity extends SDLActivity {
     protected void onResume() {
         super.onResume();
         telaCheia();
+        // The settings screen is a separate Android Activity. When it closes,
+        // this SDL activity resumes and can restore the touch layer safely.
+        if (menuAbierto) menuAbierto = false;
         if (overlay != null && prefs != null) overlay.recarregar(prefs);
         if (hud != null && prefs != null) {
             hud.setVisibility(prefs.ligado(Preferencias.HUD) ? View.VISIBLE : View.GONE);
