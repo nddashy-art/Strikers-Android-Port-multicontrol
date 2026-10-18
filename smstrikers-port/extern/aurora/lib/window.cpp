@@ -29,7 +29,13 @@ extern "C" void Android_UnlockActivityMutex(void);
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <memory>
+#include <mutex>
+#include <new>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "rmlui.hpp"
@@ -40,12 +46,11 @@ namespace aurora::window {
 namespace {
 constexpr Module Log{"aurora::window"};
 
-// Some Android controller apps expose a standard joystick, but SDL has no built-in
-// gamepad mapping for it. Aurora currently consumes SDL's higher-level gamepad API,
-// so add a conservative fallback mapping for unknown devices with enough controls.
-void add_fallback_gamepad_mapping(SDL_JoystickID instance) {
+#if defined(SDL_PLATFORM_ANDROID)
+// Some Android controller apps expose a joystick without an SDL gamepad mapping.
+bool add_fallback_gamepad_mapping(SDL_JoystickID instance) {
   if (SDL_IsGamepad(instance)) {
-    return;
+    return false;
   }
 
   const char* reportedName = SDL_GetJoystickNameForID(instance);
@@ -53,7 +58,7 @@ void add_fallback_gamepad_mapping(SDL_JoystickID instance) {
   SDL_Joystick* joystick = SDL_OpenJoystick(instance);
   if (joystick == nullptr) {
     Log.warn("Unmapped joystick '{}' (instance {}) could not be opened: {}", joystickName, instance, SDL_GetError());
-    return;
+    return false;
   }
 
   const int axes = SDL_GetNumJoystickAxes(joystick);
@@ -71,13 +76,13 @@ void add_fallback_gamepad_mapping(SDL_JoystickID instance) {
   if (axes < 2 || buttons < 4) {
     Log.warn("Ignoring unmapped joystick '{}': it does not expose enough axes/buttons for a gamepad",
              joystickName);
-    return;
+    return false;
   }
 
   std::string mapping = std::string(guidText) +
-      ",Strikers Generic Gamepad,a:b0,b:b1,x:b2,y:b3,leftx:a0,lefty:a1~";
+      ",Strikers Generic Gamepad,a:b0,b:b1,x:b2,y:b3,leftx:a0,lefty:a1";
   if (axes >= 4) {
-    mapping += ",rightx:a2,righty:a3~";
+    mapping += ",rightx:a2,righty:a3";
   }
   if (axes >= 6) {
     mapping += ",lefttrigger:a4,righttrigger:a5";
@@ -103,13 +108,139 @@ void add_fallback_gamepad_mapping(SDL_JoystickID instance) {
     mapping += ",dpup:b11,dpdown:b12,dpleft:b13,dpright:b14";
   }
 
-  const int result = SDL_AddGamepadMapping(mapping.c_str());
-  if (result < 0) {
+  if (!SDL_AddGamepadMapping(mapping.c_str())) {
     Log.warn("Failed to add fallback gamepad mapping for '{}': {}", joystickName, SDL_GetError());
-  } else {
-    Log.info("Added fallback SDL gamepad mapping for '{}' (instance {})", joystickName, instance);
+    return false;
   }
+
+  const bool recognized = SDL_IsGamepad(instance);
+  if (recognized) {
+    Log.info("Added fallback SDL gamepad mapping for '{}' (instance {})", joystickName, instance);
+  } else {
+    Log.warn("Added a mapping for '{}', but SDL still does not classify it as a gamepad", joystickName);
+  }
+  return recognized;
 }
+#endif
+
+#if defined(SDL_PLATFORM_ANDROID)
+enum class ControllerBridgeAction { List, Assign };
+
+struct ControllerBridgeDevice {
+  SDL_JoystickID instance = -1;
+  int player = -1;
+  std::string name;
+};
+
+struct ControllerBridgeRequest {
+  ControllerBridgeAction action = ControllerBridgeAction::List;
+  SDL_JoystickID instance = -1;
+  int player = -1; // -1 means unassigned; otherwise 0..PAD_MAX_CONTROLLERS-1
+  std::vector<ControllerBridgeDevice> devices;
+  bool success = false;
+  bool completed = false;
+  std::mutex mutex;
+  std::condition_variable finished;
+};
+
+Uint32 g_controllerBridgeEvent = static_cast<Uint32>(-1);
+
+bool assign_controller_on_game_thread(SDL_JoystickID instance, int player) {
+  auto selected = input::g_GameControllers.find(instance);
+  if (selected == input::g_GameControllers.end()) {
+    Log.warn("Controller assignment requested for missing instance {}", instance);
+    return false;
+  }
+  if (player < -1 || player >= PAD_MAX_CONTROLLERS) {
+    Log.warn("Ignoring invalid controller player index {}", player);
+    return false;
+  }
+
+  auto& chosen = selected->second;
+  const int oldPlayer = SDL_GetGamepadPlayerIndex(chosen.m_controller);
+  if (player >= 0) {
+    for (auto& [otherInstance, other] : input::g_GameControllers) {
+      if (otherInstance != instance && SDL_GetGamepadPlayerIndex(other.m_controller) == player) {
+        SDL_SetGamepadPlayerIndex(other.m_controller, -1);
+      }
+    }
+  }
+
+  if (oldPlayer >= 0 && oldPlayer != player) {
+    input::persist_controller_for_player(static_cast<uint32_t>(oldPlayer), nullptr);
+  }
+  SDL_SetGamepadPlayerIndex(chosen.m_controller, player);
+  if (player >= 0) {
+    input::persist_controller_for_player(static_cast<uint32_t>(player), &chosen);
+  }
+
+  Log.info("Controller '{}' (instance {}) assigned to {}",
+           SDL_GetGamepadName(chosen.m_controller) != nullptr ? SDL_GetGamepadName(chosen.m_controller) : "unknown",
+           instance, player < 0 ? "no player" : std::to_string(player + 1));
+  return true;
+}
+
+void service_controller_bridge_request(SDL_Event& event) {
+  auto* holder = static_cast<std::shared_ptr<ControllerBridgeRequest>*>(event.user.data1);
+  if (holder == nullptr) {
+    return;
+  }
+  std::shared_ptr<ControllerBridgeRequest> request = *holder;
+  delete holder;
+
+  std::vector<ControllerBridgeDevice> devices;
+  bool success = false;
+  if (request->action == ControllerBridgeAction::List) {
+    devices.reserve(input::g_GameControllers.size());
+    for (const auto& [instance, controller] : input::g_GameControllers) {
+      const int player = SDL_GetGamepadPlayerIndex(controller.m_controller);
+      const char* rawName = SDL_GetGamepadName(controller.m_controller);
+      devices.push_back(ControllerBridgeDevice{
+          .instance = instance,
+          .player = player >= 0 && player < PAD_MAX_CONTROLLERS ? player : -1,
+          .name = rawName != nullptr ? rawName : "Unknown controller",
+      });
+    }
+    success = true;
+  } else {
+    success = assign_controller_on_game_thread(request->instance, request->player);
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(request->mutex);
+    request->devices = std::move(devices);
+    request->success = success;
+    request->completed = true;
+  }
+  request->finished.notify_one();
+}
+
+bool submit_controller_bridge_request(const std::shared_ptr<ControllerBridgeRequest>& request) {
+  if (g_controllerBridgeEvent == static_cast<Uint32>(-1)) {
+    return false;
+  }
+  auto* holder = new (std::nothrow) std::shared_ptr<ControllerBridgeRequest>(request);
+  if (holder == nullptr) {
+    return false;
+  }
+
+  SDL_Event event{};
+  event.type = g_controllerBridgeEvent;
+  event.user.data1 = holder;
+  if (!SDL_PushEvent(&event)) {
+    delete holder;
+    Log.warn("Could not queue controller settings request: {}", SDL_GetError());
+    return false;
+  }
+
+  std::unique_lock<std::mutex> lock(request->mutex);
+  if (!request->finished.wait_for(lock, std::chrono::seconds(5), [&request] { return request->completed; })) {
+    Log.warn("Timed out waiting for controller settings request");
+    return false;
+  }
+  return true;
+}
+#endif
 
 SDL_Window* g_window;
 SDL_Renderer* g_renderer;
@@ -226,6 +357,12 @@ void sync_paused() {
 }
 
 void process_event(SDL_Event& event) {
+#if defined(SDL_PLATFORM_ANDROID)
+  if (g_controllerBridgeEvent != static_cast<Uint32>(-1) && event.type == g_controllerBridgeEvent) {
+    service_controller_bridge_request(event);
+    return;
+  }
+#endif
   const bool primaryWindow = targets_primary_window(&event);
   if (primaryWindow) {
 #ifdef AURORA_ENABLE_GX
@@ -238,7 +375,17 @@ void process_event(SDL_Event& event) {
 
   switch (event.type) {
   case SDL_EVENT_JOYSTICK_ADDED: {
-    add_fallback_gamepad_mapping(event.jdevice.which);
+#if defined(SDL_PLATFORM_ANDROID)
+    if (add_fallback_gamepad_mapping(event.jdevice.which)) {
+      const auto instance = input::add_controller(event.jdevice.which);
+      if (instance >= 0) {
+        g_events.push_back(AuroraEvent{
+            .type = AURORA_CONTROLLER_ADDED,
+            .controller = instance,
+        });
+      }
+    }
+#endif
     break;
   }
   case SDL_EVENT_WINDOW_MOVED: {
@@ -275,10 +422,12 @@ void process_event(SDL_Event& event) {
   }
   case SDL_EVENT_GAMEPAD_ADDED: {
     auto instance = input::add_controller(event.gdevice.which);
-    g_events.push_back(AuroraEvent{
-        .type = AURORA_CONTROLLER_ADDED,
-        .controller = instance,
-    });
+    if (instance >= 0) {
+      g_events.push_back(AuroraEvent{
+          .type = AURORA_CONTROLLER_ADDED,
+          .controller = instance,
+      });
+    }
     break;
   }
   case SDL_EVENT_GAMEPAD_REMOVED: {
@@ -464,6 +613,12 @@ bool initialize() {
   TRY(SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight"), "Error setting {}: {}", SDL_HINT_ORIENTATIONS,
       SDL_GetError());
   TRY(SDL_InitSubSystem(SDL_INIT_EVENTS | SDL_INIT_VIDEO), "Error initializing SDL: {}", SDL_GetError());
+#if defined(SDL_PLATFORM_ANDROID)
+  g_controllerBridgeEvent = SDL_RegisterEvents(1);
+  if (g_controllerBridgeEvent == static_cast<Uint32>(-1)) {
+    Log.warn("Could not register controller settings event: {}", SDL_GetError());
+  }
+#endif
   time::internal::set_pause_reason(time::internal::PauseReason::Surface,
                                    !g_surfaceReady.load(std::memory_order_acquire));
 
@@ -667,5 +822,48 @@ void set_background_input(bool value) { SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACK
 extern "C" JNIEXPORT void JNICALL Java_dev_encounter_aurora_AuroraSurface_nativeSetSurfaceReady(JNIEnv*, jclass,
                                                                                                 jboolean ready) {
   aurora::window::set_surface_ready(ready == JNI_TRUE);
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_io_github_newcoke_strikers_StrikersActivity_nativeGetControllers(JNIEnv* env, jclass) {
+  auto request = std::make_shared<aurora::window::ControllerBridgeRequest>();
+  if (!aurora::window::submit_controller_bridge_request(request)) {
+    jclass stringClass = env->FindClass("java/lang/String");
+    return stringClass != nullptr ? env->NewObjectArray(0, stringClass, nullptr) : nullptr;
+  }
+
+  jclass stringClass = env->FindClass("java/lang/String");
+  if (stringClass == nullptr) {
+    return nullptr;
+  }
+  jobjectArray result = env->NewObjectArray(static_cast<jsize>(request->devices.size()), stringClass, nullptr);
+  if (result == nullptr) {
+    return nullptr;
+  }
+  for (jsize i = 0; i < static_cast<jsize>(request->devices.size()); ++i) {
+    const auto& device = request->devices[static_cast<size_t>(i)];
+    const int playerNumber = device.player >= 0 ? device.player + 1 : 0;
+    const std::string row = std::to_string(device.instance) + "\t" +
+        std::to_string(playerNumber) + "\t" + device.name;
+    jstring entry = env->NewStringUTF(row.c_str());
+    if (entry == nullptr) {
+      return nullptr;
+    }
+    env->SetObjectArrayElement(result, i, entry);
+    env->DeleteLocalRef(entry);
+  }
+  return result;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_io_github_newcoke_strikers_StrikersActivity_nativeAssignController(JNIEnv*, jclass, jint instance, jint playerNumber) {
+  if (playerNumber < 0 || playerNumber > PAD_MAX_CONTROLLERS) {
+    return JNI_FALSE;
+  }
+  auto request = std::make_shared<aurora::window::ControllerBridgeRequest>();
+  request->action = aurora::window::ControllerBridgeAction::Assign;
+  request->instance = static_cast<SDL_JoystickID>(instance);
+  request->player = playerNumber == 0 ? -1 : playerNumber - 1;
+  return aurora::window::submit_controller_bridge_request(request) && request->success ? JNI_TRUE : JNI_FALSE;
 }
 #endif
