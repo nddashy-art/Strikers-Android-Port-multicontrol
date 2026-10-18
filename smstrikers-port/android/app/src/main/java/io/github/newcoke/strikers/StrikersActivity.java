@@ -172,7 +172,7 @@ public class StrikersActivity extends SDLActivity {
         relogio.postDelayed(new Runnable() {
             @Override public void run() {
                 if (overlay != null) {
-                    final boolean mostrar = Toque.ligada();
+                    final boolean mostrar = !menuAbierto && Toque.ligada();
                     final int quer = mostrar ? View.VISIBLE : View.GONE;
                     if (overlay.getVisibility() != quer) {
                         if (!mostrar) overlay.soltarTudo();
@@ -194,7 +194,10 @@ public class StrikersActivity extends SDLActivity {
     private void abrirMenu(int seccion) {
         if (menuAbierto || prefs == null || isFinishing()) return;
         menuAbierto = true;
-        if (overlay != null) overlay.soltarTudo();
+        if (overlay != null) {
+            overlay.soltarTudo();
+            overlay.setVisibility(View.GONE);
+        }
         try {
             MenuConfig.abrir(this, prefs, () -> {
                 menuAbierto = false;
@@ -213,7 +216,8 @@ public class StrikersActivity extends SDLActivity {
         final int code = event.getKeyCode();
         if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_MENU) {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-                abrirMenu(0);
+                if (menuAbierto) MenuConfig.cerrar(this);
+                else abrirMenu(0);
             }
             return true;
         }
@@ -222,7 +226,8 @@ public class StrikersActivity extends SDLActivity {
 
     @Override
     public void onBackPressed() {
-        abrirMenu(0);
+        if (menuAbierto) MenuConfig.cerrar(this);
+        else abrirMenu(0);
     }
 
     @Override
