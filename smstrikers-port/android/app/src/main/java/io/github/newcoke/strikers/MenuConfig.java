@@ -64,7 +64,7 @@ final class MenuConfig {
             ctx.getString(R.string.sec_about),
         };
         // Only the in-game Activity has initialized SDL and loaded the native controller bridge.
-        if (ctx instanceof StrikersActivity) {
+        if (ctx instanceof StrikersActivity || ctx instanceof MenuActivity) {
             return new String[] {
                 comuns[0], comuns[1], comuns[2], comuns[3],
                 ctx.getString(R.string.sec_controllers),
@@ -452,9 +452,14 @@ final class MenuConfig {
         wifiTitulo.setPadding(Vitrine.dp(ctx, 16), Vitrine.dp(ctx, 12),
                               Vitrine.dp(ctx, 16), Vitrine.dp(ctx, 4));
         wifi.addView(wifiTitulo);
-        String[] info = ctx instanceof StrikersActivity
-                ? ((StrikersActivity) ctx).informacionControlWifi()
-                : new String[] {"No disponible", "------", "Detenido"};
+        String[] info;
+        if (ctx instanceof StrikersActivity) {
+            info = ((StrikersActivity) ctx).informacionControlWifi();
+        } else if (ctx instanceof MenuActivity) {
+            info = ((MenuActivity) ctx).informacionControlWifi();
+        } else {
+            info = new String[] {"No disponible", "------", "Detenido"};
+        }
         TextView wifiDatos = new TextView(ctx);
         wifiDatos.setText(ctx.getString(R.string.wifi_remote_address, info[0], ControladorWifiServer.PUERTO)
                 + "\n" + ctx.getString(R.string.wifi_remote_pin, info[1])
