@@ -321,6 +321,30 @@ final class MenuConfig {
 
         nota(ctx, v, ctx.getString(R.string.controllers_help));
 
+        LinearLayout wifi = Vitrine.painel(ctx);
+        TextView wifiTitulo = new TextView(ctx);
+        wifiTitulo.setText(R.string.wifi_remote_title);
+        wifiTitulo.setTextColor(Vitrine.TEXTO);
+        wifiTitulo.setTextSize(15f);
+        wifiTitulo.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        wifiTitulo.setPadding(Vitrine.dp(ctx, 16), Vitrine.dp(ctx, 12),
+                              Vitrine.dp(ctx, 16), Vitrine.dp(ctx, 4));
+        wifi.addView(wifiTitulo);
+        String[] info = ctx instanceof StrikersActivity
+                ? ((StrikersActivity) ctx).informacionControlWifi()
+                : new String[] {"No disponible", "------", "Detenido"};
+        TextView wifiDatos = new TextView(ctx);
+        wifiDatos.setText(ctx.getString(R.string.wifi_remote_address, info[0], ControladorWifiServer.PUERTO)
+                + "\\n" + ctx.getString(R.string.wifi_remote_pin, info[1])
+                + "\\n" + ctx.getString(R.string.wifi_remote_status, info[2]));
+        wifiDatos.setTextColor(Vitrine.TEXTO_2);
+        wifiDatos.setTextSize(13f);
+        wifiDatos.setPadding(Vitrine.dp(ctx, 16), 0, Vitrine.dp(ctx, 16), Vitrine.dp(ctx, 12));
+        wifi.addView(wifiDatos);
+        largo(ctx, v, wifi);
+        margem(ctx, v, wifi);
+        nota(ctx, v, ctx.getString(R.string.wifi_remote_help));
+
         LinearLayout lista = new LinearLayout(ctx);
         lista.setOrientation(LinearLayout.VERTICAL);
         largo(ctx, v, lista);

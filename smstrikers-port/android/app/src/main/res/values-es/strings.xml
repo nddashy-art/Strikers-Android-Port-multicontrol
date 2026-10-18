@@ -99,4 +99,12 @@
     <string name="controller_assign_success">Mando asignado al jugador %1$d.</string>
     <string name="controller_unassign_success">Mando dejado sin asignar.</string>
     <string name="controller_assign_failed">No se pudo asignar el mando. Actualiza la lista e inténtalo otra vez.</string>
+
+
+    <!-- Wi-Fi controller companion -->
+    <string name="wifi_remote_title">Segundo teléfono por Wi-Fi</string>
+    <string name="wifi_remote_address">IP del juego: %1$s  ·  Puerto UDP: %2$d</string>
+    <string name="wifi_remote_pin">Código de emparejamiento: %1$s</string>
+    <string name="wifi_remote_status">Conexión: %1$s</string>
+    <string name="wifi_remote_help">Instala la app separada Strikers Wi-Fi Controller en el otro teléfono. Conecta ambos móviles a la misma red Wi-Fi o conecta el teléfono-control a la zona Wi-Fi de este móvil; después introduce esta IP y el código en la app del mando.</string>
 </resources>

@@ -99,4 +99,12 @@
     <string name="controller_assign_success">Controle atribuído ao jogador %1$d.</string>
     <string name="controller_unassign_success">Controle removido da atribuição.</string>
     <string name="controller_assign_failed">Não foi possível atribuir o controle. Atualize a lista e tente novamente.</string>
+
+
+    <!-- Wi-Fi controller companion -->
+    <string name="wifi_remote_title">Segundo celular por Wi-Fi</string>
+    <string name="wifi_remote_address">IP do jogo: %1$s  ·  Porta UDP: %2$d</string>
+    <string name="wifi_remote_pin">Código de pareamento: %1$s</string>
+    <string name="wifi_remote_status">Conexão: %1$s</string>
+    <string name="wifi_remote_help">Instale o app separado Strikers Wi-Fi Controller no outro celular. Conecte os dois aparelhos à mesma rede Wi-Fi ou conecte o celular-controle ao ponto de acesso deste aparelho; depois informe este IP e código no app de controle.</string>
 </resources>

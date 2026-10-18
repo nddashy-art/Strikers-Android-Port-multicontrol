@@ -118,4 +118,12 @@
     <string name="controller_assign_success">Controller assigned to Player %1$d.</string>
     <string name="controller_unassign_success">Controller left unassigned.</string>
     <string name="controller_assign_failed">Could not assign this controller. Refresh the list and try again.</string>
+
+
+    <!-- Wi-Fi controller companion -->
+    <string name="wifi_remote_title">Second phone over Wi-Fi</string>
+    <string name="wifi_remote_address">Host IP: %1$s  ·  UDP port: %2$d</string>
+    <string name="wifi_remote_pin">Pairing code: %1$s</string>
+    <string name="wifi_remote_status">Connection: %1$s</string>
+    <string name="wifi_remote_help">Install the separate Strikers Wi-Fi Controller app on the other phone. Put both phones on the same Wi-Fi network or connect the controller phone to this phone\'s hotspot, then enter this IP and code in the controller app.</string>
 </resources>

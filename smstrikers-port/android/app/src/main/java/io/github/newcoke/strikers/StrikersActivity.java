@@ -25,8 +25,11 @@ public class StrikersActivity extends SDLActivity {
     // Player 0 means unassigned; players 1..4 select PAD ports 0..3.
     static native String[] nativeGetControllers();
     static native boolean nativeAssignController(int instanceId, int playerNumber);
+    static native void nativeRemoteState(boolean active, int buttons, int triggerL, int triggerR,
+                                         int lx, int ly, int cx, int cy);
 
     private OverlayView overlay;
+    private ControladorWifiServer servidorWifi;
     private HudView hud;
     private Preferencias prefs;
     private final Handler relogio = new Handler(Looper.getMainLooper());
@@ -68,6 +71,8 @@ public class StrikersActivity extends SDLActivity {
         telaCheia();
 
         prefs = new Preferencias(this);
+        servidorWifi = new ControladorWifiServer(this);
+        servidorWifi.start();
         overlay = new OverlayView(this);
         overlay.recarregar(prefs);
         overlay.aoPedirMenu(() -> {
@@ -190,9 +195,15 @@ public class StrikersActivity extends SDLActivity {
         else if (overlay != null) overlay.soltarTudo();
     }
 
+    String[] informacionControlWifi() {
+        return servidorWifi != null ? servidorWifi.informacion()
+                : new String[] {"No disponible", "------", "Detenido"};
+    }
+
     @Override
     protected void onDestroy() {
         relogio.removeCallbacksAndMessages(null);
+        if (servidorWifi != null) servidorWifi.close();
         super.onDestroy();
     }
 }
