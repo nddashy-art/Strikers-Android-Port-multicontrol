@@ -73,7 +73,9 @@ public final class ControllerActivity extends Activity {
     private void showPad(){
         LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setBackgroundColor(Color.rgb(17,24,39));
         LinearLayout bar=new LinearLayout(this);bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.addView(text("Conectando con "+host+":"+PORT,13),new LinearLayout.LayoutParams(0,dp(36),1f));
+        TextView liveStatus=text("Conectando con "+host+":"+PORT,13);
+        status=liveStatus;
+        bar.addView(liveStatus,new LinearLayout.LayoutParams(0,dp(36),1f));
         Button change=new Button(this);change.setText("Cambiar conexión");
         change.setOnClickListener(v->{if(client!=null)client.close();client=null;showSetup();});
         bar.addView(change,new LinearLayout.LayoutParams(-2,dp(38)));

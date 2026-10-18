@@ -335,8 +335,8 @@ final class MenuConfig {
                 : new String[] {"No disponible", "------", "Detenido"};
         TextView wifiDatos = new TextView(ctx);
         wifiDatos.setText(ctx.getString(R.string.wifi_remote_address, info[0], ControladorWifiServer.PUERTO)
-                + "\\n" + ctx.getString(R.string.wifi_remote_pin, info[1])
-                + "\\n" + ctx.getString(R.string.wifi_remote_status, info[2]));
+                + "\n" + ctx.getString(R.string.wifi_remote_pin, info[1])
+                + "\n" + ctx.getString(R.string.wifi_remote_status, info[2]));
         wifiDatos.setTextColor(Vitrine.TEXTO_2);
         wifiDatos.setTextSize(13f);
         wifiDatos.setPadding(Vitrine.dp(ctx, 16), 0, Vitrine.dp(ctx, 16), Vitrine.dp(ctx, 12));
