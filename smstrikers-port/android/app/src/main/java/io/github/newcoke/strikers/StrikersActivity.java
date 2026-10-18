@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -21,6 +22,8 @@ import dev.encounter.aurora.AuroraSurface;
 /** O jogo. Tudo que decide se ele pode começar está em {@link SetupActivity}. */
 public class StrikersActivity extends SDLActivity {
 
+    static final String EXTRA_ABRIR_MANDOS = "io.github.newcoke.strikers.OPEN_CONTROLLER_SETTINGS";
+
     // The native side queries devices and applies assignments on SDL's event thread.
     // Player 0 means unassigned; players 1..4 select PAD ports 0..3.
     static native String[] nativeGetControllers();
@@ -32,6 +35,7 @@ public class StrikersActivity extends SDLActivity {
     private ControladorWifiServer servidorWifi;
     private HudView hud;
     private Preferencias prefs;
+    private boolean menuAbierto;
     private final Handler relogio = new Handler(Looper.getMainLooper());
 
     @Override
@@ -76,8 +80,9 @@ public class StrikersActivity extends SDLActivity {
         overlay = new OverlayView(this);
         overlay.recarregar(prefs);
         overlay.aoPedirMenu(() -> {
-            overlay.soltarTudo();
-            MenuConfig.abrir(this, prefs, () -> overlay.recarregar(prefs));
+            // Wait until OverlayView has finished its ACTION_UP processing before
+            // changing focus and adding a dialog over the SDL/Vulkan surface.
+            overlay.post(() -> abrirMenu(0));
         });
         addContentView(overlay, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -93,6 +98,7 @@ public class StrikersActivity extends SDLActivity {
 
         prepararVidro();
         seguirControleFisico();
+        procesarAtajoDeInicio(getIntent());
     }
 
     /**
@@ -176,6 +182,54 @@ public class StrikersActivity extends SDLActivity {
                 relogio.postDelayed(this, 1000);
             }
         }, 1000);
+    }
+
+    private void procesarAtajoDeInicio(android.content.Intent intent) {
+        if (intent != null && intent.getBooleanExtra(EXTRA_ABRIR_MANDOS, false)) {
+            // Give SDL and the first Vulkan surface time to settle before showing the menu.
+            relogio.postDelayed(() -> abrirMenu(4), 3000);
+        }
+    }
+
+    private void abrirMenu(int seccion) {
+        if (menuAbierto || prefs == null || isFinishing()) return;
+        menuAbierto = true;
+        if (overlay != null) overlay.soltarTudo();
+        try {
+            MenuConfig.abrir(this, prefs, () -> {
+                menuAbierto = false;
+                if (overlay != null && prefs != null) overlay.recarregar(prefs);
+            }, seccion);
+        } catch (RuntimeException error) {
+            menuAbierto = false;
+            android.util.Log.e("strikers", "No se pudo abrir el menú de ajustes", error);
+            android.widget.Toast.makeText(this, "No se pudo abrir el menú. Inténtalo de nuevo.",
+                    android.widget.Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        final int code = event.getKeyCode();
+        if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_MENU) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                abrirMenu(0);
+            }
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public void onBackPressed() {
+        abrirMenu(0);
+    }
+
+    @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        procesarAtajoDeInicio(intent);
     }
 
     @Override
